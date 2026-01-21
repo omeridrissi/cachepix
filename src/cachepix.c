@@ -126,7 +126,7 @@ PPM_ptr ppm_load_image(const char *file_name) {
         bytes_per_pixel = 6;
 
     size_t row_bytes = img_ptr->width*bytes_per_pixel;
-    img_ptr->stride = (row_bytes + 63) & ~((size_t)63);
+    img_ptr->stride = (row_bytes + PPM_ALIGNMENT-1) & ~((size_t)(PPM_ALIGNMENT-1));
 
     for (int y = 0; y < img_ptr->height; ++y) {
         data_t dst_row = data + y * img_ptr->stride;
@@ -214,7 +214,7 @@ int ppm_save_image(PPM_ptr img_ptr, char *file_name, int force) {
         bytes_per_pixel = 6;
 
     size_t row_bytes = img_ptr->width*bytes_per_pixel;
-    img_ptr->stride = (row_bytes + 63) & ~((size_t)63);
+    img_ptr->stride = (row_bytes + PPM_ALIGNMENT-1) & ~((size_t)PPM_ALIGNMENT-1);
 
     for (int y = 0; y < img_ptr->height; ++y) {
         data_t src_row = img_ptr->data + y * img_ptr->stride;
@@ -264,7 +264,7 @@ PPM_ptr ppm_create(uint32_t width, uint32_t height, uint16_t maxval) {
     img_ptr->data = data;
     
     size_t row_bytes = img_ptr->width*bytes_per_channel*3;
-    img_ptr->stride = (row_bytes + 63) & ~((size_t)63);
+    img_ptr->stride = (row_bytes + PPM_ALIGNMENT-1) & ~((size_t)(PPM_ALIGNMENT-1));
 
     return img_ptr;
 }
@@ -346,7 +346,7 @@ int ppm_validate(const PPM_ptr img_ptr) {
 size_t ppm_expected_data_size(uint32_t width, uint32_t height, uint16_t maxval) {
     size_t bytes_per_pixel = (maxval <= 255) ? 3 : 6;
     size_t row_bytes = width*bytes_per_pixel;
-    size_t stride = (row_bytes + 63) & ~((size_t)63);
+    size_t stride = (row_bytes + PPM_ALIGNMENT-1) & ~((size_t)(PPM_ALIGNMENT-1));
 
     return (size_t)(stride*height);
 }
@@ -461,3 +461,11 @@ int ppm_realign(PPM_ptr img_ptr, size_t alignment) {
     img_ptr->data = new_data;
     img_ptr->stride = new_stride;
 }
+
+int ppm_is_contiguous(const PPM_ptr img_ptr) {
+    size_t bpp = (img_ptr->maxval <= 255) ? 3 : 6;
+    
+    return (img_ptr->stride == img_ptr->width*bpp);
+}
+
+
