@@ -18,11 +18,12 @@ typedef struct {
 /*
  * Load, Store, Clone, etc.
  */
-PPM_ptr load_ppm_image(const char *file_name);
-int save_ppm_image(PPM_ptr img_ptr, char *file_name, int force);
-void free_ppm_image(PPM_ptr img_ptr);
+PPM_ptr ppm_load_image(const char *file_name);
+int ppm_save_image(PPM_ptr img_ptr, char *file_name, int force);
+void ppm_free(PPM_ptr img_ptr);
 
 PPM_ptr ppm_create(uint32_t width, uint32_t height, uint16_t maxval);
+PPM_ptr ppm_create_empty(void);
 PPM_ptr ppm_clone(PPM_ptr src);
 void ppm_clear(PPM_ptr img_ptr, uint16_t *val);
 
@@ -41,6 +42,7 @@ data_t ppm_data(const PPM_ptr img_ptr);
 int ppm_validate(const PPM_ptr img_ptr);
 int ppm_validate_file(const char *file_name);
 size_t ppm_expected_data_size(uint32_t width, uint32_t height, uint16_t maxval);
+size_t ppm_expected_file_size(uint32_t width, uint32_t height, uint16_t maxval);
 
 /*
  * Core PPM operations
@@ -59,7 +61,7 @@ int ppm_set_pixel(PPM_ptr img_ptr, uint32_t x, uint32_t y, const uint16_t *rgb);
 int ppm_copy(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
 int ppm_convert_maxval(PPM_ptr img_ptr, uint16_t new_maxval);
 int ppm_rgb_to_grayscale(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
-int ppm_apply_scalar(PPM_ptr img_ptr, float scale, float bias);
+int ppm_apply_scalar(PPM_ptr img_ptr, double scale, double bias);
 
 /*
  * Memory layout and performance

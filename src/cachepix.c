@@ -76,8 +76,6 @@ static int token_consume_header(PPM_ptr img_ptr, data_t file_buf, size_t file_si
             }
             if (img_ptr->maxval == 0) {
                 img_ptr->maxval = (uint16_t)strtol(file_buf+i-1, &end, 10);
-                printf("debug: this block ran and maxval is %d\n", img_ptr->maxval);
-                printf("debug: character at char end: %c", *end);
                 header_size = end - file_buf;
                 break;
             }
@@ -95,14 +93,9 @@ static int token_consume_header(PPM_ptr img_ptr, data_t file_buf, size_t file_si
  * Copy a valid PPM image data and metadata from disk into PPM structure
  * Discards any header comments
  */
-PPM_ptr load_ppm_image(const char *file_name) {
+PPM_ptr ppm_load_image(const char *file_name) {
 
-    PPM_ptr img_ptr = (PPM_ptr)malloc(sizeof(PPM_img));
-    img_ptr->width = (uint32_t)0;
-    img_ptr->height = (uint32_t)0;
-    img_ptr->data_size = (uint32_t)0;
-    img_ptr->maxval = (uint16_t)0;    
-    printf("debug\n");
+    PPM_ptr img_ptr = ppm_create_empty();
 
     FILE *fp = fopen(file_name, "rb");
     if (fp == NULL) {
@@ -114,34 +107,38 @@ PPM_ptr load_ppm_image(const char *file_name) {
     size_t file_size = ftell(fp);
     fseek(fp, 0L, SEEK_SET);
 
-    printf("File size: %zu\n", file_size);    
-
     data_t entire_file = (data_t)malloc(sizeof(char)*file_size);
     fread(entire_file, sizeof(char), file_size, fp);
 
     fclose(fp);
-    
     int header_size = token_consume_header(img_ptr, entire_file, file_size);
     
-    printf("debug: header size is %d\n", header_size);
-
     if (header_size < 0) {
         fprintf(stderr, "%s: error parsing header: Could not read file format. Only PPM is supported.\n", file_name);
         return NULL;
     }
 
-    data_t data = (data_t)malloc(sizeof(uint8_t)*(file_size - header_size));
-    memcpy(data, (entire_file + header_size), (file_size - header_size));
+    size_t data_size = ppm_expected_data_size(img_ptr->width, img_ptr->height, img_ptr->maxval);
+    data_t data = (data_t)malloc(sizeof(uint8_t)*data_size);
+
+    int bytes_per_pixel = 3;
+    if (img_ptr->maxval > 255)
+        bytes_per_pixel = 6;
+
+    size_t row_bytes = img_ptr->width*bytes_per_pixel;
+    img_ptr->stride = (row_bytes + 63) & ~((size_t)63);
+
+    for (int y = 0; y < img_ptr->height; ++y) {
+        data_t dst_row = data + y * img_ptr->stride;
+        data_t src_row = entire_file + header_size + y * row_bytes;
+
+        memcpy(dst_row, src_row, row_bytes);
+    }
 
     free(entire_file);
 
-    img_ptr->data_size = (file_size - header_size);
+    img_ptr->data_size = data_size; 
     img_ptr->data = data;
-    int bytes_per_sample = 1;
-    if (img_ptr->maxval > 255)
-        bytes_per_sample = 2;
-
-    img_ptr->stride = img_ptr->width*bytes_per_sample;
 
     return img_ptr;
 }
@@ -151,7 +148,7 @@ PPM_ptr load_ppm_image(const char *file_name) {
  * Stops if the file it's writing to already exists, isn't empty and force option isn't enabled
  * Overwrites existing file only if force option is enabled
  */
-int save_ppm_image(PPM_ptr img_ptr, char *file_name, int force) {
+int ppm_save_image(PPM_ptr img_ptr, char *file_name, int force) {
 
     if (!file_empty(file_name) && !force) {
         fprintf(stderr, "ERR: save_ppm_image: file already exists and is not empty. (toggle the force option to overwrite it)\n");
@@ -170,8 +167,6 @@ int save_ppm_image(PPM_ptr img_ptr, char *file_name, int force) {
     int height_str_len = decimal_length_unsigned(img_ptr->height); //(int)((ceil(log10(img_ptr->height))+1)*sizeof(char));
     int maxval_str_len = decimal_length_uint16(img_ptr->maxval); //(int)((ceil(log10(img_ptr->maxval))+1)*sizeof(char));
 
-    printf("debug: width_str_len, height_str_len, maxval_str_len: %d, %d, %d\n", width_str_len, height_str_len, maxval_str_len);
-
     char *width_str = (char*)malloc(sizeof(char)*width_str_len);
     char *height_str = (char*)malloc(sizeof(char)*height_str_len);
     char *maxval_str = (char*)malloc(sizeof(char)*maxval_str_len);
@@ -180,7 +175,7 @@ int save_ppm_image(PPM_ptr img_ptr, char *file_name, int force) {
     sprintf(height_str, "%d", img_ptr->height);
     sprintf(maxval_str, "%d", img_ptr->maxval);
 
-    size_t file_size = ppm_expected_data_size(img_ptr->width, img_ptr->height, img_ptr->maxval) + width_str_len + height_str_len + maxval_str_len + 5;
+    size_t file_size = ppm_expected_file_size(img_ptr->width, img_ptr->height, img_ptr->maxval);
     data_t entire_file = (data_t)malloc((file_size)*sizeof(char));
 
     // Construct fixed header
@@ -207,12 +202,28 @@ int save_ppm_image(PPM_ptr img_ptr, char *file_name, int force) {
     for (int i = 0; i < maxval_str_len; i++) {
         entire_file[i+offset] = maxval_str[i];
     }
-    printf("debug: maxval_str_len = %d\n", maxval_str_len);
     offset += maxval_str_len;
     entire_file[offset] = WHITESPACE_CHAR;
-    offset++;
+    //offset++;
     
-    memcpy(entire_file+offset, img_ptr->data, ppm_expected_data_size(img_ptr->width, img_ptr->height, img_ptr->maxval));
+    // Finally copy the data
+
+    // WRITEWITHSTRIDE
+    int bytes_per_pixel = 3;
+    if (img_ptr->maxval > 255)
+        bytes_per_pixel = 6;
+
+    size_t row_bytes = img_ptr->width*bytes_per_pixel;
+    img_ptr->stride = (row_bytes + 63) & ~((size_t)63);
+
+    for (int y = 0; y < img_ptr->height; ++y) {
+        data_t src_row = img_ptr->data + y * img_ptr->stride;
+        data_t dst_row = entire_file + offset + y * row_bytes;
+
+        memcpy(dst_row, src_row, row_bytes);
+    } 
+
+    //memcpy(entire_file+offset, img_ptr->data, ppm_expected_data_size(img_ptr->width, img_ptr->height, img_ptr->maxval));
 
     size_t n_bytes = fwrite(entire_file, sizeof(char), file_size, fp);
 
@@ -228,7 +239,7 @@ int save_ppm_image(PPM_ptr img_ptr, char *file_name, int force) {
     return 0;
 }
 
-void free_ppm_image(PPM_ptr img_ptr) {
+void ppm_free(PPM_ptr img_ptr) {
     free(img_ptr->data);
     free(img_ptr);
 }
@@ -239,9 +250,9 @@ PPM_ptr ppm_create(uint32_t width, uint32_t height, uint16_t maxval) {
         return NULL;
     }
 
-    uint32_t bytes_per_sample = 1;
+    uint32_t bytes_per_channel = 1;
     if (maxval > 255)
-        bytes_per_sample = 2;
+        bytes_per_channel = 2;
 
     PPM_ptr img_ptr = (PPM_ptr)malloc(sizeof(PPM_img));
     data_t data = (data_t)malloc(sizeof(uint8_t)*ppm_expected_data_size(width, height, maxval));
@@ -251,7 +262,23 @@ PPM_ptr ppm_create(uint32_t width, uint32_t height, uint16_t maxval) {
     img_ptr->maxval = maxval;
     img_ptr->data_size = ppm_expected_data_size(width, height,maxval);
     img_ptr->data = data;
-    img_ptr->stride = width*bytes_per_sample;
+    
+    size_t row_bytes = img_ptr->width*bytes_per_channel*3;
+    img_ptr->stride = (row_bytes + 63) & ~((size_t)63);
+
+    return img_ptr;
+}
+
+PPM_ptr ppm_create_empty() {
+
+    PPM_ptr img_ptr = (PPM_ptr)malloc(sizeof(PPM_img));
+
+    img_ptr->width = 0;
+    img_ptr->height = 0;
+    img_ptr->maxval = 0;
+    img_ptr->data_size = 0;
+    img_ptr->data = NULL;
+    img_ptr->stride = 0;
 
     return img_ptr;
 }
@@ -317,22 +344,22 @@ int ppm_validate(const PPM_ptr img_ptr) {
 }
 
 size_t ppm_expected_data_size(uint32_t width, uint32_t height, uint16_t maxval) {
-    uint32_t bytes_per_sample = 0;
-    
-    if (maxval == 0) {
-        return 0;
-    } else if (maxval > 255) {
-        bytes_per_sample = 2;
-    } else {
-        bytes_per_sample = 1;
-    }
+    size_t bytes_per_pixel = (maxval <= 255) ? 3 : 6;
+    size_t row_bytes = width*bytes_per_pixel;
+    size_t stride = (row_bytes + 63) & ~((size_t)63);
 
-    
-    if (width*height*3*bytes_per_sample > SIZE_MAX) {
-        return 0;
-    }
+    return (size_t)(stride*height);
+}
 
-    return (size_t)(width*height*3*bytes_per_sample);
+size_t ppm_expected_file_size(uint32_t width, uint32_t height, uint16_t maxval) {
+    int width_str_len = decimal_length_unsigned(width); //(int)((ceil(log10(width))+1)*sizeof(char));
+    int height_str_len = decimal_length_unsigned(height); //(int)((ceil(log10(height))+1)*sizeof(char));
+    int maxval_str_len = decimal_length_uint16(maxval); //(int)((ceil(log10(maxval))+1)*sizeof(char));
+
+    size_t bytes_per_pixel = (maxval <= 255) ? 3 : 6;
+
+    return (size_t)(width*height*bytes_per_pixel + width_str_len + height_str_len + maxval_str_len + 7);
+
 }
 
 /*
