@@ -425,5 +425,39 @@ int ppm_copy(PPM_ptr dst_ptr, const PPM_ptr src_ptr) {
     return 0;
 }
 
+/*
+ * Alignment and performance
+ */
+int ppm_realign(PPM_ptr img_ptr, size_t alignment) {
+    if (ppm_validate(img_ptr) < 0) {
+        return -1;
+    }
 
+    // Alignment must be a power of two
+    if ((alignment & (alignment - 1)) != 0)
+        return -1;
 
+    size_t bpp = (img_ptr->maxval <= 255) ? 3 : 6;
+    size_t row_bytes = img_ptr->width * bpp;
+
+    size_t new_stride = (row_bytes + alignment - 1) & ~(alignment - 1);
+
+    if (img_ptr->stride == new_stride)
+        return 0;
+
+    data_t new_data = (data_t)malloc(new_stride + img_ptr->height);
+
+    if (!new_data)
+        return -1;
+
+    for (size_t y = 0; y < img_ptr->height; y++) {
+        data_t src_row = img_ptr->data + y * img_ptr->stride;
+        data_t dst_row = new_data + y * new_stride;
+
+        memcpy(dst_row, src_row, row_bytes);
+    }
+
+    free(img_ptr->data);
+    img_ptr->data = new_data;
+    img_ptr->stride = new_stride;
+}
