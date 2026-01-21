@@ -1,7 +1,6 @@
 #include <stdlib.h>
 
 #include "cachepix.h"
-
 #include "internal.h"
 
 int ppm_convert_maxval_scalar(PPM_ptr img_ptr, uint16_t new_maxval) {
@@ -19,7 +18,7 @@ int ppm_convert_maxval_scalar(PPM_ptr img_ptr, uint16_t new_maxval) {
 
     size_t new_row_bytes = img_ptr->width * 3 * new_bpc;
 
-    size_t new_stride = (new_row_bytes + 63) & ~((size_t)63);
+    size_t new_stride = (new_row_bytes + PPM_ALIGNMENT-1) & ~((size_t)(PPM_ALIGNMENT - 1));
 
     data_t new_data = (data_t)malloc(new_stride*img_ptr->width);
     if (!new_data)

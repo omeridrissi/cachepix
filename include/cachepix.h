@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define PPM_ALIGNMENT 64
 #define WHITESPACE_CHAR '\n'
 
 typedef char* data_t;
