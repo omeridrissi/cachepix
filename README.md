@@ -95,6 +95,8 @@ This layout improves cache utilization and enables aligned SIMD loads.
 ## Building
 
 ```sh
+make 
+# or
 make ARCH=[x86, x86_avx2, arm]
 ```
 
