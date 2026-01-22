@@ -1,8 +1,7 @@
 
 #include "cachepix.h"
-#include "internal.h"
 
-#ifdef CACHEPIX_ENABLE_SSE2
+#if defined(__SSE2__)
 #include <emmintrin.h> // SSE2
 #include <smmintrin.h>
 
@@ -11,7 +10,7 @@ int ppm_scale_sse2(PPM_ptr img_ptr, float scale, float bias) {
     if (ppm_validate(img_ptr) < 0)
         return -1;
 
-    const size_t row_bytes = img_ptr->width * 3;
+    const size_t row_bytes = img_ptr->width*3;
     const __m128 vscale = _mm_set1_ps(scale);
     const __m128 vbias = _mm_set1_ps(bias);
 
@@ -60,48 +59,75 @@ int ppm_convert_maxval_sse2(PPM_ptr img_ptr, uint16_t new_maxval) {
     return 0;
 }
 
-int ppm_rgb_to_grayscale_sse2(PPM_ptr img)
+int ppm_rgb_to_grayscale_sse2(PPM_ptr dst_ptr, const PPM_ptr src_ptr)
 {
-    if (ppm_validate(img_ptr) < 0)
+    if (ppm_validate(dst_ptr) < 0 || ppm_validate(src_ptr) < 0)
         return -1;
 
-    const size_t row_bytes = img->width * 3;
+    //const size_t row_bytes = src_ptr->width * 3;
 
-    const __m128 wr = _mm_set1_ps(0.299f);
-    const __m128 wg = _mm_set1_ps(0.587f);
-    const __m128 wb = _mm_set1_ps(0.114f);
+    // fixed-point weights (Q8) to avoid float math
+    const __m128i wR = _mm_set1_epi16(77);   // 0.299 * 256 ≈ 77
+    const __m128i wG = _mm_set1_epi16(150);  // 0.587 * 256 ≈ 150
+    const __m128i wB = _mm_set1_epi16(29);   // 0.114 * 256 ≈ 29
 
-    for (size_t y = 0; y < img->height; ++y) {
-        uint8_t *row = img->data + y * img->stride;
+    for (size_t y = 0; y < src_ptr->height; ++y) {
+        data_t srow = src_ptr->data + y * src_ptr->stride;
+        data_t drow = dst_ptr->data + y * dst_ptr->stride;
 
-        for (size_t x = 0; x + 12 <= row_bytes; x += 12) {
-            // load 4 pixels (12 bytes)
-            uint8_t *p = row + x;
+        size_t x = 0;
 
-            float r[4] = { p[0], p[3], p[6], p[9] };
-            float g[4] = { p[1], p[4], p[7], p[10] };
-            float b[4] = { p[2], p[5], p[8], p[11] };
+        // Process 16 pixels at a time (16 * 3 = 48 bytes)
+        for (; x + 16 <= src_ptr->width; x += 16) {
+            // Load 48 bytes (16 RGB pixels) in three 16-byte chunks
+            __m128i r_chunk, g_chunk, b_chunk;
+            uint8_t rvals[16], gvals[16], bvals[16];
 
-            __m128 vr = _mm_loadu_ps(r);
-            __m128 vg = _mm_loadu_ps(g);
-            __m128 vb = _mm_loadu_ps(b);
-
-            __m128 yv = _mm_add_ps(
-                            _mm_add_ps(_mm_mul_ps(vr, wr),
-                                       _mm_mul_ps(vg, wg)),
-                            _mm_mul_ps(vb, wb));
-
-            __m128i yi = _mm_cvtps_epi32(yv);
-
-            uint32_t yout[4];
-            _mm_storeu_si128((__m128i *)yout, yi);
-
-            for (int i = 0; i < 4; ++i) {
-                uint8_t g = (uint8_t)yout[i];
-                p[i*3+0] = g;
-                p[i*3+1] = g;
-                p[i*3+2] = g;
+            for (int i = 0; i < 16; ++i) {
+                rvals[i] = srow[(x + i) * 3 + 0];
+                gvals[i] = srow[(x + i) * 3 + 1];
+                bvals[i] = srow[(x + i) * 3 + 2];
             }
+
+            r_chunk = _mm_loadu_si128((__m128i*)rvals);
+            g_chunk = _mm_loadu_si128((__m128i*)gvals);
+            b_chunk = _mm_loadu_si128((__m128i*)bvals);
+
+            // unpack to 16-bit integers
+            __m128i r_lo = _mm_unpacklo_epi8(r_chunk, _mm_setzero_si128());
+            __m128i r_hi = _mm_unpackhi_epi8(r_chunk, _mm_setzero_si128());
+            __m128i g_lo = _mm_unpacklo_epi8(g_chunk, _mm_setzero_si128());
+            __m128i g_hi = _mm_unpackhi_epi8(g_chunk, _mm_setzero_si128());
+            __m128i b_lo = _mm_unpacklo_epi8(b_chunk, _mm_setzero_si128());
+            __m128i b_hi = _mm_unpackhi_epi8(b_chunk, _mm_setzero_si128());
+
+            // multiply by fixed-point weights
+            __m128i gray_lo = _mm_add_epi16(
+                                  _mm_add_epi16(_mm_mullo_epi16(r_lo, wR),
+                                                _mm_mullo_epi16(g_lo, wG)),
+                                  _mm_mullo_epi16(b_lo, wB));
+            __m128i gray_hi = _mm_add_epi16(
+                                  _mm_add_epi16(_mm_mullo_epi16(r_hi, wR),
+                                                _mm_mullo_epi16(g_hi, wG)),
+                                  _mm_mullo_epi16(b_hi, wB));
+
+            // shift back down (divide by 256)
+            gray_lo = _mm_srli_epi16(gray_lo, 8);
+            gray_hi = _mm_srli_epi16(gray_hi, 8);
+
+            // pack back to 8-bit
+            __m128i gray = _mm_packus_epi16(gray_lo, gray_hi);
+
+            // store to dst_ptr row
+            _mm_storeu_si128((__m128i*)(drow + x), gray);
+        }
+
+        // scalar tail
+        for (; x < src_ptr->width; ++x) {
+            uint8_t R = srow[x*3 + 0];
+            uint8_t G = srow[x*3 + 1];
+            uint8_t B = srow[x*3 + 2];
+            drow[x] = (uint8_t)((77*R + 150*G + 29*B) >> 8);
         }
     }
 

@@ -1,6 +1,6 @@
 #include "cachepix.h"
-#include "internal.h"
 
+#if defined(__ARM_NEON)
 #include <arm_neon.h>
 
 int ppm_scale_neon(PPM_ptr img_ptr, float scale, float bias)
@@ -70,7 +70,7 @@ int ppm_scale_neon(PPM_ptr img_ptr, float scale, float bias)
     return 0;
 }
 
-int ppm_rgb_to_grayscale_neon(const PPM_ptr src, PPM_ptr dst)
+int ppm_rgb_to_grayscale_neon(PPM_ptr dst, const PPM_ptr src)
 {
     if (ppm_validate(src) < 0 || ppm_validate(dst) < 0) 
         return -1;
@@ -183,3 +183,4 @@ int ppm_convert_maxval_neon(PPM_ptr img_ptr, uint16_t new_maxval)
     return 0;
 }
 
+#endif

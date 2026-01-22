@@ -1,7 +1,6 @@
 #include <stdlib.h>
 
 #include "cachepix.h"
-#include "internal.h"
 
 int ppm_convert_maxval_scalar(PPM_ptr img_ptr, uint16_t new_maxval) {
 
@@ -142,7 +141,7 @@ int ppm_rgb_to_grayscale_scalar(PPM_ptr dst_ptr, const PPM_ptr src_ptr) {
     return 0;
 }
 
-int ppm_scale_scalar(PPM_ptr img_ptr, double scale, double bias) {
+int ppm_scale_scalar(PPM_ptr img_ptr, float scale, float bias) {
     
     if (ppm_validate(img_ptr) < 0)
         return -1;

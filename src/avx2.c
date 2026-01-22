@@ -1,8 +1,8 @@
 
-#include "cachepix.c"
-#include "internal.h"
+#include "cachepix.h"
 
-#ifdef CACHEPIX_ENABLE_AVX2
+
+#if defined(__AVX2__)
 #include <immintrin.h>
 
 int ppm_scale_avx2(PPM_ptr img_ptr, float scale, float bias)
@@ -77,7 +77,7 @@ int ppm_scale_avx2(PPM_ptr img_ptr, float scale, float bias)
     return 0;
 }
 
-int ppm_rgb_to_grayscale_avx2(const PPM_ptr src_ptr, PPM_ptr dst_ptr) {
+int ppm_rgb_to_grayscale_avx2(PPM_ptr dst_ptr, const PPM_ptr src_ptr) {
     if (ppm_validate(src_ptr) < 0 || ppm_validate(dst_ptr) < 0)
         return -1;
 
@@ -174,5 +174,4 @@ int ppm_convert_maxval_avx2(PPM_ptr img_ptr, uint16_t new_maxval)
     img_ptr->maxval = new_maxval;
     return 0;
 }
-
-#endif 
+#endif

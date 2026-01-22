@@ -16,6 +16,18 @@ LIB_PATH := $(BUILD_DIR)/$(LIB_NAME)
 # Flags
 CFLAGS := -O3 -Wall -Wextra -I$(INC_DIR) -lm
 
+ifeq ($(ARCH),x86)
+    CFLAGS += -msse2
+endif
+
+ifeq ($(ARCH),x86_avx2)
+    CFLAGS += -mavx2
+endif
+
+ifeq ($(ARCH),arm)
+    CFLAGS += -mfpu=neon
+endif
+
 # SIMD flags (adjust as needed)
 # Examples:
 #   -msse4.2

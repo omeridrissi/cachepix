@@ -55,14 +55,37 @@ size_t ppm_expected_file_size(uint32_t width, uint32_t height, uint16_t maxval);
 int ppm_get_pixel(const PPM_ptr img_ptr, uint32_t x, uint32_t y, uint16_t *rgb);
 int ppm_set_pixel(PPM_ptr img_ptr, uint32_t x, uint32_t y, const uint16_t *rgb);
 
-// ####################### NOT IMPLEMENTED #######################
 /*
  * Bulk operations (SIMD-friendly core)
  */
 int ppm_copy(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
 int ppm_convert_maxval(PPM_ptr img_ptr, uint16_t new_maxval);
 int ppm_rgb_to_grayscale(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
-int ppm_apply_scalar(PPM_ptr img_ptr, double scale, double bias);
+int ppm_scale(PPM_ptr img_ptr, float scale, float bias);
+
+/*
+ * Define workers
+ */
+// Scalar
+int ppm_convert_maxval_scalar(PPM_ptr img_ptr, uint16_t new_maxval);
+int ppm_rgb_to_grayscale_scalar(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
+int ppm_scale_scalar(PPM_ptr img_ptr, float scale, float bias);
+
+// SSE2
+int ppm_convert_maxval_sse2(PPM_ptr img_ptr, uint16_t new_maxval);
+int ppm_rgb_to_grayscale_sse2(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
+int ppm_scale_sse2(PPM_ptr img_ptr, float scale, float bias);
+
+// AVX2
+int ppm_convert_maxval_avx2(PPM_ptr img_ptr, uint16_t new_maxval);
+int ppm_rgb_to_grayscale_avx2(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
+int ppm_scale_avx2(PPM_ptr img_ptr, float scale, float bias);
+
+// NEON
+int ppm_convert_maxval_neon(PPM_ptr img_ptr, uint16_t new_maxval);
+int ppm_rgb_to_grayscale_neon(PPM_ptr dst_ptr, const PPM_ptr src_ptr);
+int ppm_scale_neon(PPM_ptr img_ptr, float scale, float bias);
+
 
 /*
  * Memory layout and performance

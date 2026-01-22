@@ -9,6 +9,13 @@
 
 #include "cachepix.h"
 
+typedef struct {
+    int (*scale)(PPM_ptr, float, float);
+    int (*rgb_to_grayscale)(const PPM_ptr, PPM_ptr);
+    int (*convert_maxval)(PPM_ptr, uint16_t);
+} ppm_ops_t;
+
+static ppm_ops_t ops;
 
 static int file_empty(const char *path) {
     struct stat st;
@@ -460,6 +467,8 @@ int ppm_realign(PPM_ptr img_ptr, size_t alignment) {
     free(img_ptr->data);
     img_ptr->data = new_data;
     img_ptr->stride = new_stride;
+
+    return 0;
 }
 
 int ppm_is_contiguous(const PPM_ptr img_ptr) {
@@ -468,4 +477,44 @@ int ppm_is_contiguous(const PPM_ptr img_ptr) {
     return (img_ptr->stride == img_ptr->width*bpp);
 }
 
+void ppm_init(void)
+{
+    /* Default to scalar */
+    ops.scale   = ppm_scale_scalar;
+    ops.rgb_to_grayscale    = ppm_rgb_to_grayscale_scalar;
+    ops.convert_maxval = ppm_convert_maxval_scalar;
 
+#if defined(__AVX2__)
+    ops.scale   = ppm_scale_avx2;
+    ops.rgb_to_grayscale    = ppm_rgb_to_grayscale_avx2;
+    ops.convert_maxval = ppm_convert_maxval_avx2;
+
+#elif defined(__SSE2__)
+    ops.scale   = ppm_scale_sse2;
+    ops.rgb_to_grayscale    = ppm_rgb_to_grayscale_sse2;
+    ops.convert_maxval = ppm_convert_maxval_sse2;
+
+#elif defined(__ARM_NEON)
+    ops.scale   = ppm_scale_neon;
+    ops.rgb_to_grayscale    = ppm_rgb_to_grayscale_neon;
+    ops.convert_maxval = ppm_convert_maxval_neon;
+#endif
+}
+
+/*
+ *
+ *  DEFINE WORKER WRAPERS
+ *
+ */
+
+int ppm_scale(PPM_ptr img_ptr, float scale, float bias) {
+    return ops.scale(img_ptr, scale, bias);
+}
+
+int ppm_convert_maxval(PPM_ptr img_ptr, uint16_t new_maxval) {
+    return ops.convert_maxval(img_ptr, new_maxval);
+}
+
+int ppm_rgb_to_grayscale(PPM_ptr dst_ptr, PPM_ptr src_ptr) {
+    return ops.rgb_to_grayscale(dst_ptr, src_ptr);
+}
