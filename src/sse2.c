@@ -1,8 +1,11 @@
-#include <emmintrin.h> // SSE2
-#include <smmintrin.h>
 
 #include "cachepix.h"
 #include "internal.h"
+
+#ifdef CACHEPIX_ENABLE_SSE2
+#include <emmintrin.h> // SSE2
+#include <smmintrin.h>
+
 
 int ppm_scale_sse2(PPM_ptr img_ptr, float scale, float bias) {
     if (ppm_validate(img_ptr) < 0)
@@ -105,3 +108,4 @@ int ppm_rgb_to_grayscale_sse2(PPM_ptr img)
     return 0;
 }
 
+#endif

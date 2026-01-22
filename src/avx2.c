@@ -1,21 +1,23 @@
-#include <immintrin.h>
 
 #include "cachepix.c"
 #include "internal.h"
 
-int ppm_apply_scalar_avx2(PPM_ptr img, float scale, float bias)
+#ifdef CACHEPIX_ENABLE_AVX2
+#include <immintrin.h>
+
+int ppm_scale_avx2(PPM_ptr img_ptr, float scale, float bias)
 {
-    if (!img || img->bytes_per_channel != 1)
+    if (ppm_validate(img_ptr) < 0)
         return -1;
 
-    const size_t row_bytes = img->width * 3;
+    const size_t row_bytes = img_ptr->width * 3;
     const __m256 vscale = _mm256_set1_ps(scale);
     const __m256 vbias  = _mm256_set1_ps(bias);
     const __m256 vzero  = _mm256_set1_ps(0.0f);
     const __m256 vmax   = _mm256_set1_ps(255.0f);
 
-    for (size_t y = 0; y < img->height; ++y) {
-        uint8_t *row = img->data + y * img->stride;
+    for (size_t y = 0; y < img_ptr->height; ++y) {
+        data_t row = img_ptr->data + y * img_ptr->stride;
 
         size_t i = 0;
         for (; i + 32 <= row_bytes; i += 32) {
@@ -75,22 +77,20 @@ int ppm_apply_scalar_avx2(PPM_ptr img, float scale, float bias)
     return 0;
 }
 
-int ppm_rgb_to_grayscale_avx2(const PPM_ptr src, PPM_ptr dst) {
-    if (!src || !dst)
-        return -1;
-    if (src->bytes_per_channel != 1 || dst->bytes_per_channel != 1)
+int ppm_rgb_to_grayscale_avx2(const PPM_ptr src_ptr, PPM_ptr dst_ptr) {
+    if (ppm_validate(src_ptr) < 0 || ppm_validate(dst_ptr) < 0)
         return -1;
 
     const __m256 wR = _mm256_set1_ps(0.299f);
     const __m256 wG = _mm256_set1_ps(0.587f);
     const __m256 wB = _mm256_set1_ps(0.114f);
 
-    for (size_t y = 0; y < src->height; ++y) {
-        uint8_t *s = src->data + y * src->stride;
-        uint8_t *d = dst->data + y * dst->stride;
+    for (size_t y = 0; y < src_ptr->height; ++y) {
+        data_t s = src_ptr->data + y * src_ptr->stride;
+        data_t d = dst_ptr->data + y * dst_ptr->stride;
 
         size_t x = 0;
-        for (; x + 8 <= src->width; x += 8) {
+        for (; x + 8 <= src_ptr->width; x += 8) {
             uint8_t r[8], g[8], b[8];
 
             for (int i = 0; i < 8; ++i) {
@@ -115,7 +115,7 @@ int ppm_rgb_to_grayscale_avx2(const PPM_ptr src, PPM_ptr dst) {
             *(uint64_t*)(d + x) = _mm256_extract_epi64(y8, 0);
         }
 
-        for (; x < src->width; ++x) {
+        for (; x < src_ptr->width; ++x) {
             uint8_t R = s[x*3];
             uint8_t G = s[x*3+1];
             uint8_t B = s[x*3+2];
@@ -126,22 +126,20 @@ int ppm_rgb_to_grayscale_avx2(const PPM_ptr src, PPM_ptr dst) {
     return 0;
 }
 
-int ppm_convert_maxval_avx2(PPM_ptr img, uint16_t new_maxval)
+int ppm_convert_maxval_avx2(PPM_ptr img_ptr, uint16_t new_maxval)
 {
-    if (!img || img->bytes_per_channel != 1)
-        return -1;
-    if (img->maxval > 255 || new_maxval > 255)
+    if (ppm_validate(img_ptr) < 0)
         return -1;
 
-    float scale = (float)new_maxval / (float)img->maxval;
+    float scale = (float)new_maxval / (float)img_ptr->maxval;
     __m256 vscale = _mm256_set1_ps(scale);
     __m256 vmax = _mm256_set1_ps((float)new_maxval);
 
-    for (size_t y = 0; y < img->height; ++y) {
-        uint8_t *row = img->data + y * img->stride;
+    for (size_t y = 0; y < img_ptr->height; ++y) {
+        data_t row = img_ptr->data + y * img_ptr->stride;
 
         size_t i = 0;
-        for (; i + 32 <= img->width * 3; i += 32) {
+        for (; i + 32 <= img_ptr->width * 3; i += 32) {
             __m256i v = _mm256_loadu_si256((__m256i*)(row + i));
 
             __m256i lo = _mm256_unpacklo_epi8(v, _mm256_setzero_si256());
@@ -169,11 +167,12 @@ int ppm_convert_maxval_avx2(PPM_ptr img, uint16_t new_maxval)
             _mm256_storeu_si256((__m256i*)(row + i), v);
         }
 
-        for (; i < img->width * 3; ++i)
+        for (; i < img_ptr->width * 3; ++i)
             row[i] = (uint8_t)(row[i] * scale);
     }
 
-    img->maxval = new_maxval;
+    img_ptr->maxval = new_maxval;
     return 0;
 }
 
+#endif 
